@@ -1,10 +1,11 @@
+import os
 import re
 import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import sqlparse
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from google import genai
 from google.genai import types
 from sqlalchemy import create_engine, inspect, text
@@ -14,7 +15,7 @@ load_dotenv()
 
 app = FastAPI(
     title="NL2SQL Engine",
-    description="A lightweight Natural Language to SQL Backend-as-a-Service powered by LLM's and SQLAlchemy.",
+    description="Natural Language to SQL Backend-as-a-Service powered by LLMs and SQLAlchemy.",
     version="1.0.0"
 )
 
@@ -36,10 +37,30 @@ class QueryRequest(BaseModel):
         ...,
         description="Natural language question to translate into SQL and execute"
     )
-    gemini_api_key: str = Field(
-        ...,
-        description="Google Gemini or any other LLM API key"
+    gemini_api_key: Optional[str] = Field(
+        None,
+        description="Google Gemini API key (or provide llm_api_key)"
     )
+    llm_api_key: Optional[str] = Field(
+        None,
+        description="Generic LLM API key (works across providers)"
+    )
+
+    @model_validator(mode="after")
+    def validate_api_key(self):
+        # Resolve key from request fields or server environment
+        resolved_key = (
+            self.llm_api_key
+            or self.gemini_api_key
+            or os.getenv("LLM_API_KEY")
+            or os.getenv("GEMINI_API_KEY")
+        )
+        if not resolved_key:
+            raise ValueError("An LLM API key must be provided via 'llm_api_key', 'gemini_api_key', or environment variable.")
+        # Normalize to both attributes for uniform access
+        self.llm_api_key = resolved_key
+        self.gemini_api_key = resolved_key
+        return self
 
 
 class QueryResponse(BaseModel):
@@ -50,10 +71,6 @@ class QueryResponse(BaseModel):
 
 
 def extract_database_schema(db_uri: str) -> str:
-    """
-    Connects to the specified database URI and extracts table names
-    and column definitions.
-    """
     engine = create_engine(db_uri)
     try:
         inspector = inspect(engine)
@@ -72,10 +89,6 @@ def extract_database_schema(db_uri: str) -> str:
 
 
 def clean_sql_string(raw_sql: str) -> str:
-    """
-    Strips markdown code blocks, conversational preamble/postamble text,
-    and isolates the SQL statement (WITH ... or SELECT ...).
-    """
     cleaned = re.sub(r"```(?:sql)?", "", raw_sql, flags=re.IGNORECASE)
     cleaned = cleaned.replace("```", "").strip()
 
@@ -86,12 +99,8 @@ def clean_sql_string(raw_sql: str) -> str:
     return cleaned.strip()
 
 
-def generate_sql_query(schema: str, user_prompt: str, gemini_api_key: str) -> str:
-    """
-    Uses Google Gemini Flash to generate a valid, optimized SQL query
-    constrained strictly to the provided database schema.
-    """
-    client = genai.Client(api_key=gemini_api_key)
+def generate_sql_query(schema: str, user_prompt: str, llm_api_key: str) -> str:
+    client = genai.Client(api_key=llm_api_key)
 
     current_date = datetime.date.today().strftime("%Y-%m-%d")
     current_year = datetime.date.today().year
@@ -149,11 +158,6 @@ Output: SELECT * FROM employees ORDER BY salary DESC LIMIT 5;
 
 
 def validate_sql_query(sql_query: str) -> bool:
-    """
-    Parses and verifies the SQL query to block destructive commands,
-    multiple stacked statements (SQL injection prevention), and ensure
-    only read-only SELECT / CTE WITH statements are executed.
-    """
     clean_sql = sql_query.strip().rstrip(';')
 
     parsed = sqlparse.parse(clean_sql)
@@ -161,7 +165,7 @@ def validate_sql_query(sql_query: str) -> bool:
     if not parsed:
         raise ValueError("Invalid SQL query: Unable to parse.")
 
-    # Security check: Block stacked/multiple statements
+    # Multiple statements are detected here
     non_empty_stmts = [s for s in parsed if str(s).strip()]
     if len(non_empty_stmts) > 1:
         raise ValueError("Security Block: Multiple SQL statements detected.")
@@ -169,7 +173,7 @@ def validate_sql_query(sql_query: str) -> bool:
     stmt = non_empty_stmts[0]
     statement_type = stmt.get_type()
 
-    # Normalize query string: strip leading SQL comments, whitespace, and parentheses
+    # Handling comments, whitespace, and parentheses
     lines = [line.strip() for line in clean_sql.splitlines() if line.strip()]
     while lines and (lines[0].startswith("--") or lines[0].startswith("/*")):
         lines.pop(0)
@@ -188,9 +192,6 @@ def validate_sql_query(sql_query: str) -> bool:
 
 
 def serialize_row_value(val: Any) -> Any:
-    """
-    Safely serializes database field types into JSON-compatible values.
-    """
     if isinstance(val, (datetime.date, datetime.datetime)):
         return val.isoformat()
     if isinstance(val, bytes):
@@ -221,25 +222,18 @@ async def health_check():
 
 @app.post("/query", response_model=QueryResponse, tags=["Query"])
 async def query_endpoint(request: QueryRequest):
-    """
-    Translates a natural language question into SQL using the schema of the
-    provided database, validates query safety, executes it, and returns the results.
-    """
     engine = None
     try:
-        # Step 1: Extract Schema
         schema = extract_database_schema(request.db_connection_uri)
         
-        # Step 2: Generate Cleaned SQL Query
-        generated_sql = generate_sql_query(schema, request.user_prompt, request.gemini_api_key)
+        # Use generalized llm_api_key (populated by validator)
+        generated_sql = generate_sql_query(schema, request.user_prompt, request.llm_api_key)
 
-        # Step 3: Validate Query
         validate_sql_query(generated_sql)
 
-        # Step 4: Execute Query
         engine = create_engine(request.db_connection_uri)
         with engine.connect() as connection:
-            # Relax ONLY_FULL_GROUP_BY for MySQL to prevent 1055 OperationalError
+            # This prevents sql 1055 error on MySQL
             if "mysql" in request.db_connection_uri.lower():
                 try:
                     connection.execute(text("SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));"))
