@@ -18,9 +18,6 @@ from main import (
 
 client = TestClient(app)
 
-# ==========================================
-# 1. SQL CLEANING TESTS (clean_sql_string)
-# ==========================================
 class TestCleanSqlString:
     def test_strip_markdown_blocks(self):
         raw = "```sql\nSELECT * FROM users;\n```"
@@ -49,10 +46,6 @@ class TestCleanSqlString:
         raw = "DROP TABLE users;"
         assert clean_sql_string(raw) == "DROP TABLE users;"
 
-
-# ==========================================
-# 2. SQL VALIDATION TESTS (validate_sql_query)
-# ==========================================
 class TestValidateSqlQuery:
     def test_standard_select_valid(self):
         assert validate_sql_query("SELECT * FROM users;") is True
@@ -118,10 +111,6 @@ class TestValidateSqlQuery:
         with pytest.raises(ValueError):
             validate_sql_query("EXPLAIN SELECT * FROM users;")
 
-
-# ==========================================
-# 3. SCHEMA EXTRACTION TESTS (extract_database_schema)
-# ==========================================
 class TestExtractDatabaseSchema:
     def test_invalid_db_uri(self):
         with pytest.raises(ValueError, match="Failed to connect or extract schema"):
@@ -151,9 +140,6 @@ class TestExtractDatabaseSchema:
         assert "username" in schema
 
 
-# ==========================================
-# 4. DATA SERIALIZATION & EXECUTION TESTS (/query)
-# ==========================================
 class TestDataSerializationAndExecution:
     @pytest.fixture
     def setup_db_with_complex_types(self, tmp_path):
@@ -230,9 +216,6 @@ class TestDataSerializationAndExecution:
         assert response.json()["status"] == "healthy"
 
 
-# ==========================================
-# 5. ENDPOINT ERROR HANDLING & INFORMATION DISCLOSURE
-# ==========================================
 class TestEndpointErrorHandling:
     def test_missing_payload_fields(self):
         response = client.post("/query", json={"user_prompt": "test"})
