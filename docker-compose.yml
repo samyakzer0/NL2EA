@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: nl2ea-postgres
+
+    environment:
+      POSTGRES_USER: nl2ea
+      POSTGRES_PASSWORD: 2005
+      POSTGRES_DB: nl2ea
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - nl2ea_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  nl2ea_postgres_data:
