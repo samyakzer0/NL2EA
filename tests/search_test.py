@@ -68,9 +68,9 @@ def answer(query):
     """
 
     return client.models.generate_content(
-        model="gemini-2.5-flash",
-        ContentDispositionHeader=prompt,
-    )
+        model="gemini-flash-latest",
+        contents=prompt,
+    ).text
 
-answer = answer("What is the refund period?")
+answer = answer("Who is the CEO of the company?")
 print(answer)
