@@ -32,11 +32,3 @@ doc = embedding.embed_documents(documents = [
 query = embedding.embed_query(query = "How long can I get a refund?")
 
 
-print("Document Embeddings:")
-print(doc)
-print(len(doc))
-print(len(doc[0]))
-
-print("Query Embedding:")
-print(query)
-print(len(query))
