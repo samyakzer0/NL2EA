@@ -1,5 +1,5 @@
 from typing import TypedDict
-from langgraph.graph import StateGraph, START
+from langgraph.graph import StateGraph, START, END
 from google import genai
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.prompts import ChatPromptTemplate
@@ -20,6 +20,7 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 class State(TypedDict):
     message: str
     route: str
+    result: str
 
 builder = StateGraph(State)
 
@@ -187,11 +188,11 @@ def sql(state: State):
 
     if not validate_sql_query(query):
         return {
-            "message": "Unsafe SQL query generated."
+            "result": "Unsafe SQL query generated."
         }
     rows = execute_sql(os.getenv("DATABASE_URL"), query)
     return {
-        "message": f"SQL Query Result: {rows}"
+        "result": str(rows)
     }
 
 
@@ -199,7 +200,7 @@ def sql(state: State):
 def rag(state: State):
       response = rag_chain.invoke(state['message'])
       return {
-            "message" : response.content[0]["text"]
+            "result" : response.content[0]["text"]
       }
 
 
@@ -225,21 +226,60 @@ def classify(question):
      return response.text.strip()
 
 
+def answer(state:State):
+    question = state['message']
+    result = state['result']
+    prompt = f"""
+
+    You are an AI analytics assistant.
+
+User question:
+{question}
+
+Retrieved result:
+{result}
+
+Answer the user's question clearly and concisely using the retrieved result.
+
+Do not mention internal routing, SQL, RAG, embeddings, or implementation details.
+
+If the result does not contain enough information, say so clearly.
+"""
+
+    response = client.models.generate_content(
+        model="gemini-3.5-flash-lite",
+        contents=prompt,
+    )
+
+    return {
+        "result": response.text.strip()
+    }
+
+
+
+
+
+
 def router(state: State):
      return classify(state['message'])
 
 
 builder.add_node("rag", rag)
 builder.add_node("sql", sql)
+
 builder.add_conditional_edges(START, router, {
     "rag": "rag",
     "sql": "sql"
 })
+builder.add_node("answer", answer)
+builder.add_edge("rag", "answer")
+builder.add_edge("sql", "answer")
+builder.add_edge("answer", END)
 
 graph = builder.compile()
 
 result = graph.invoke({
-    "message": "What is our refund policy?"
+    "message": "Delete all documents from the database"
 })
 
 print(result)
