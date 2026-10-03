@@ -47,8 +47,8 @@ def clean_sql_string(raw_sql):
 
     return raw_sql.strip()
 
-
 def validate_sql_query(sql_query):
+
     parsed = sqlparse.parse(sql_query)
 
     if not parsed:
@@ -59,17 +59,21 @@ def validate_sql_query(sql_query):
 
     statement = parsed[0]
 
-    if statement.get_type() not in ("SELECT", "UNKNOWN"):
+    statement_type = statement.get_type()
+
+    if statement_type == "SELECT":
+        return True
+
+    if statement_type != "UNKNOWN":
         return False
 
-    if statement.get_type() == "UNKNOWN":
-        first_token = statement.token_first(skip_cm=True)
+    first_token = statement.token_first(skip_cm=True)
 
-        if first_token is None:
-            return False
+    if first_token is None:
+        return False
 
-        if first_token.value.upper() != "WITH":
-            return False
+    if first_token.value.upper() != "WITH":
+        return False
 
     return True
 
@@ -93,19 +97,23 @@ def execute_sql(db_url, query):
     engine = create_engine(db_url)
 
     try:
-        with engine.begin() as conn:
+        with engine.connect() as conn:
 
-            result = conn.execute(text(query))
+            with conn.begin():
 
-            rows = [
-                {
+                conn.execute(text("SET TRANSACTION READ ONLY"))
+
+                result = conn.execute(text(query))
+
+                rows = [
+                    {
                     k: serialize_row_value(v)
                     for k, v in dict(row._mapping).items()
-                }
-                for row in result
-            ]
+                    }
+                    for row in result
+                ]
 
-            return rows
+                return rows
 
     except Exception as e:
 

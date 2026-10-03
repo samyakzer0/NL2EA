@@ -1,4 +1,13 @@
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, schema
+import warnings
+from sqlalchemy.exc import SAWarning
+
+warnings.filterwarnings(
+    "ignore",
+    message="Did not recognize type 'vector' of column 'embedding'",
+    category=SAWarning
+)
+
 
 def extract_database_schema(db_url,allowed_tables=None):
      engine = create_engine(db_url)
@@ -13,10 +22,15 @@ def extract_database_schema(db_url,allowed_tables=None):
           columns = inspector.get_columns(table_name)
           schema[table_name]=[]
           for column in columns:
-             schema[table_name].append({
-               "name": column["name"],
-               "type": str(column["type"])
-          })
+
+            if column["name"] == "embedding":
+                continue
+
+            schema[table_name].append({
+            "name": column["name"],
+             "type": str(column["type"])
+    })
+            
      engine.dispose()          
      return schema
 

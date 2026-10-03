@@ -15,11 +15,10 @@ schema = extract_database_schema(
 
 schema_text = format_schema(schema)
 
-question = "Delete all documents from the database"
+question = "How many documents are there?"
 
 result = run_sql(
-    question,
-    schema_text
+    question
 )
 
 print(result)
