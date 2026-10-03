@@ -58,7 +58,7 @@ Answer:"""
 rag_chain = ({"context":retriever, "question":RunnablePassthrough()} | prompt | llm )
 
 
-schema = extract_database_schema(os.getenv("DATABASE_URL"))
+schema = extract_database_schema(os.getenv("DATABASE_URL"),allowed_tables=["documents"])
 schema_text=format_schema(schema)
 print(schema_text)
 

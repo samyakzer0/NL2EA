@@ -1,11 +1,15 @@
 from sqlalchemy import create_engine, inspect
 
-def extract_database_schema(db_url):
+def extract_database_schema(db_url,allowed_tables=None):
      engine = create_engine(db_url)
      inspector = inspect(engine)
      schema = {}
 
      for table_name in inspector.get_table_names():
+          
+          if allowed_tables and table_name not in allowed_tables:
+               continue
+
           columns = inspector.get_columns(table_name)
           schema[table_name]=[]
           for column in columns:
