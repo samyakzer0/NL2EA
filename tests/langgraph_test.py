@@ -1,20 +1,13 @@
-from typing import TypedDict
-from langgraph.graph import StateGraph, START, END
-from google import genai
-from langchain_postgres import PGVector
-from agents.rag_agent import run_rag
-from database.schema import extract_database_schema, format_schema
-from database.sql import (
-    generate_sql_query,
-    clean_sql_string,
-    validate_sql_query,
-    execute_sql
-)
-from dotenv import load_dotenv
-from sqlalchemy import create_engine, text,inspect
-import datetime
-import sqlparse
 import os
+from typing import TypedDict
+
+from dotenv import load_dotenv
+from google import genai
+from langgraph.graph import StateGraph, START, END
+
+from agents.rag_agent import run_rag
+from agents.sql_agent import run_sql
+from database.schema import extract_database_schema, format_schema
 
 
 
@@ -23,42 +16,25 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 class State(TypedDict):
     message: str
-    route: str
     result: str
 
 builder = StateGraph(State)
 
 schema = extract_database_schema(os.getenv("DATABASE_URL"),allowed_tables=["documents"])
 schema_text=format_schema(schema)
-print(schema_text)
 
-
+#sql node
 def sql(state: State):
     question = state["message"]
 
-    query = generate_sql_query(
+    result = run_sql(
         question,
-        schema_text,
-        client
+        schema_text
     )
 
-    query = clean_sql_string(query)
-
-
-    valid = validate_sql_query(query)
-
-
-
-    if not valid:
-        return {"result": "Unsafe SQL query generated."}
-
-    rows = execute_sql(
-        os.getenv("DATABASE_URL"),
-        query
-    )
-
-
-    return {"result": str(rows)}
+    return {
+        "result": result
+    }
 
 #rag node
 def rag(state: State):
@@ -67,7 +43,6 @@ def rag(state: State):
     return {
         "result": result
     }
-
 
 
 def classify(question):
