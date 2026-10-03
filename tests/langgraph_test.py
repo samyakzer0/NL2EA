@@ -5,7 +5,7 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_postgres import PGVector
-from tests.gemini_embedding_test import GeminiEmbedding
+from retrieval.vector_store import create_retriever
 from database.schema import extract_database_schema, format_schema
 from database.sql import (
     generate_sql_query,
@@ -31,15 +31,7 @@ class State(TypedDict):
 
 builder = StateGraph(State)
 
-
-vector_store = PGVector(
-    embeddings=GeminiEmbedding(),
-    collection_name="nl2ea_docs_v2",
-    connection=os.getenv("DATABASE_URL"),
-    use_jsonb=True
-)
-
-retriever = vector_store.as_retriever(search_kwargs={"k": 3})
+retriever = create_retriever(k=3)
 
 llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash-lite", api_key=os.getenv("GEMINI_API_KEY"), temperature=0.2)
 
@@ -168,7 +160,7 @@ builder.add_edge("answer", END)
 graph = builder.compile()
 
 result = graph.invoke({
-    "message": "Delete all documents from the database"
+    "message": "Who is the CEO of the company?"
 })
 
 print(result)
