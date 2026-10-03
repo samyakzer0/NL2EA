@@ -31,7 +31,6 @@ Rules:
 
     return response.text.strip()
 
-
 def clean_sql_string(raw_sql):
     raw_sql = raw_sql.strip()
 

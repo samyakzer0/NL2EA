@@ -1,11 +1,8 @@
 from typing import TypedDict
 from langgraph.graph import StateGraph, START, END
 from google import genai
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_postgres import PGVector
-from retrieval.vector_store import create_retriever
+from agents.rag_agent import run_rag
 from database.schema import extract_database_schema, format_schema
 from database.sql import (
     generate_sql_query,
@@ -31,74 +28,96 @@ class State(TypedDict):
 
 builder = StateGraph(State)
 
-retriever = create_retriever(k=3)
-
-llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash-lite", api_key=os.getenv("GEMINI_API_KEY"), temperature=0.2)
-
-prompt = ChatPromptTemplate.from_template("""
-You are an AI assistant that answers questions using only the provided context.
-
-Context: {context}
-
-Question: {question}
-
-If the answer is unavailable in the context, say "I don't know".
-
-Answer:"""
-)
-
-rag_chain = ({"context":retriever, "question":RunnablePassthrough()} | prompt | llm )
-
-
 schema = extract_database_schema(os.getenv("DATABASE_URL"),allowed_tables=["documents"])
 schema_text=format_schema(schema)
 print(schema_text)
 
 
-
-#sql node
 def sql(state: State):
-    question = state['message']
+    question = state["message"]
+
     query = generate_sql_query(
-    question,
-    schema_text,
-    client
+        question,
+        schema_text,
+        client
     )
 
-    print(f"Generated SQL Query: {query}")
+    query = clean_sql_string(query)
 
-    if not validate_sql_query(query):
-        return {
-            "result": "Unsafe SQL query generated."
-        }
-    rows = execute_sql(os.getenv("DATABASE_URL"), query)
-    return {
-        "result": str(rows)
-    }
 
+    valid = validate_sql_query(query)
+
+
+
+    if not valid:
+        return {"result": "Unsafe SQL query generated."}
+
+    rows = execute_sql(
+        os.getenv("DATABASE_URL"),
+        query
+    )
+
+
+    return {"result": str(rows)}
 
 #rag node
 def rag(state: State):
-      response = rag_chain.invoke(state['message'])
-      return {
-            "result" : response.content[0]["text"]
-      }
+    question = state['message']
+    result = run_rag(question)
+    return {
+        "result": result
+    }
 
 
 
 def classify(question):
      prompt = f"""
-      Classify the following question into exactly one category:
+     You are a routing classifier for an enterprise analytics system.
 
-    - rag: questions that require information from documents
-    - sql: questions that require querying structured database data
+Classify the user's question into exactly ONE category:
 
-    Question: {question}
+SQL:
+- Counting records
+- Filtering records
+- Aggregations such as COUNT, SUM, AVG, MIN, MAX
+- Sorting or grouping structured data
+- Questions asking for database records or values
+- Questions containing phrases like:
+  "how many", "count", "list", "show me", "which records", "how much"
 
-    Return only:
-    rag
-    or
-    sql"""
+RAG:
+- Questions asking for information, explanations, or facts contained
+  in unstructured documents
+- Questions requiring semantic document retrieval
+- Questions such as:
+  "What is the refund period?"
+  "What does the refund policy say?"
+  "What is the company's shipping policy?"
+
+IMPORTANT:
+The word "document" alone does NOT mean RAG.
+
+For example:
+"How many documents mention shipping?"
+=> sql
+
+"Show me documents that mention refunds"
+=> sql
+
+"What is the refund period?"
+=> rag
+
+"Who is the CEO of the company?"
+=> rag
+
+User question:
+{question}
+
+Return ONLY one word:
+sql
+or
+rag
+"""
 
      response = client.models.generate_content(
         model="gemini-3.5-flash-lite",
@@ -106,13 +125,13 @@ def classify(question):
      )
      return response.text.strip()
 
+def answer(state: State):
 
-def answer(state:State):
-    question = state['message']
-    result = state['result']
+    question = state["message"]
+    result = state["result"]
+
     prompt = f"""
-
-    You are an AI analytics assistant.
+You are an AI analytics assistant.
 
 User question:
 {question}
@@ -127,14 +146,25 @@ Do not mention internal routing, SQL, RAG, embeddings, or implementation details
 If the result does not contain enough information, say so clearly.
 """
 
-    response = client.models.generate_content(
-        model="gemini-3.5-flash-lite",
-        contents=prompt,
-    )
+    try:
+        response = client.models.generate_content(
+            model="gemini-3.5-flash-lite",
+            contents=prompt,
+        )
 
-    return {
-        "result": response.text.strip()
-    }
+        
+
+        return {
+            "result": response.text.strip()
+        }
+
+    except Exception as e:
+        print("\nANSWER ERROR:")
+        print(type(e).__name__, e)
+
+        return {
+            "result": "Answer generation failed."
+        }
 
 
 
@@ -160,7 +190,7 @@ builder.add_edge("answer", END)
 graph = builder.compile()
 
 result = graph.invoke({
-    "message": "Who is the CEO of the company?"
+    "message": "How many documents mention shipping?"
 })
 
 print(result)
