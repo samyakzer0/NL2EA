@@ -5,7 +5,8 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_postgres import PGVector
-from gemini_embedding_test import GeminiEmbedding
+from tests.gemini_embedding_test import GeminiEmbedding
+from database.schema import extract_database_schema, format_schema
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text,inspect
 import datetime
@@ -50,32 +51,6 @@ Answer:"""
 
 rag_chain = ({"context":retriever, "question":RunnablePassthrough()} | prompt | llm )
 
-
-#db functions
-def extract_database_schema(db_url):
-     engine = create_engine(db_url)
-     inspector = inspect(engine)
-     schema = {}
-
-     for table_name in inspector.get_table_names():
-          columns = inspector.get_columns(table_name)
-          schema[table_name]=[]
-          for column in columns:
-             schema[table_name].append({
-               "name": column["name"],
-               "type": str(column["type"])
-          })
-     engine.dispose()          
-     return schema
-
-def format_schema(schema):
-     formatted=[]
-
-     for table,columns in schema.items():
-          formatted.append(f"Table: {table}")
-          for column in columns:
-               formatted.append(f"  Column: {column['name']} - Type: {column['type']}")
-     return "\n".join(formatted)
 
 schema = extract_database_schema(os.getenv("DATABASE_URL"))
 schema_text=format_schema(schema)
