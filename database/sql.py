@@ -2,10 +2,10 @@ import datetime
 import sqlparse
 
 from sqlalchemy import create_engine, text
-from google import genai
+from services.llm import generate_content
 
 
-def generate_sql_query(question, schema_text, client):
+def generate_sql_query(question, schema_text):
     prompt = f"""
 You are an expert PostgreSQL SQL generator.
 
@@ -24,12 +24,8 @@ Rules:
 - Use only tables and columns present in the schema.
 """
 
-    response = client.models.generate_content(
-        model="gemini-3.5-flash-lite",
-        contents=prompt,
-    )
+    return  generate_content(prompt)
 
-    return response.text.strip()
 
 def clean_sql_string(raw_sql):
     raw_sql = raw_sql.strip()

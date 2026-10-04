@@ -14,6 +14,12 @@ services:
     volumes:
       - nl2ea_postgres_data:/var/lib/postgresql/data
 
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nl2ea -d nl2ea"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   api:
     build: .
     container_name: nl2ea-api
@@ -23,8 +29,10 @@ services:
     - .env
 
     depends_on:
-    - postgres
+      postgres:
+        condition: service_healthy
 
 
 volumes:
   nl2ea_postgres_data:
+

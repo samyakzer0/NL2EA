@@ -16,6 +16,7 @@ htmlcov/
 
 # Environment variables & Sensitive files
 .env
+.env.local
 .txt
 *.key
 *.pem

@@ -1,7 +1,7 @@
 import os
 
 from dotenv import load_dotenv
-from google import genai
+
 
 from database.schema import extract_database_schema, format_schema
 
@@ -12,12 +12,8 @@ from database.sql import (
     execute_sql
 )
 
-
 load_dotenv()
 
-client = genai.Client(
-    api_key=os.getenv("GEMINI_API_KEY")
-)
 def run_sql(question):
 
     schema = extract_database_schema(
@@ -28,9 +24,8 @@ def run_sql(question):
     schema_text = format_schema(schema)
 
     query = generate_sql_query(
-        question,
-        schema_text,
-        client
+    question,
+    schema_text
     )
 
     query = clean_sql_string(query)

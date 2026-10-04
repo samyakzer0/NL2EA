@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 import os
 
 
-load_dotenv()
+
+load_dotenv(".env.local",override=True)
 
 
 schema = extract_database_schema(
