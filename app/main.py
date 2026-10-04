@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from app.graph import graph
@@ -15,20 +15,38 @@ class QueryRequest(BaseModel):
     question: str
 
 
+class QueryResponse(BaseModel):
+    answer: str
+
+
 @app.get("/")
 def root():
     return {
         "message": "EAQL API is running"
     }
 
-
-@app.post("/query")
+@app.post("/query", response_model=QueryResponse)
 def query(request: QueryRequest):
 
-    result = graph.invoke({
-        "message": request.question
-    })
+    if not request.question.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Question cannot be empty."
+        )
 
-    return {
-        "answer": result["result"]
-    }
+    try:
+        result = graph.invoke({
+            "message": request.question
+        })
+
+        return QueryResponse(
+            answer=result["result"]
+        )
+
+    except Exception as e:
+        print(f"Query error: {e}")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to process the query."
+        )
