@@ -1,18 +1,13 @@
-import os
 from typing import TypedDict
-
 from dotenv import load_dotenv
-from google import genai
-from langgraph.graph import StateGraph, START, END
 
+from langgraph.graph import StateGraph, START, END
+from services.llm import generate_content
 from agents.rag_agent import run_rag
 from agents.sql_agent import run_sql
 
 load_dotenv()
 
-client = genai.Client(
-    api_key=os.getenv("GEMINI_API_KEY")
-)
 
 class State(TypedDict):
     message: str
@@ -88,11 +83,7 @@ or
 rag
 """
 
-     response = client.models.generate_content(
-        model="gemini-3.5-flash-lite",
-        contents=prompt,
-     )
-     return response.text.strip()
+     return generate_content(prompt)
 
 def answer(state: State):
 
@@ -116,16 +107,7 @@ If the result does not contain enough information, say so clearly.
 """
 
     try:
-        response = client.models.generate_content(
-            model="gemini-3.5-flash-lite",
-            contents=prompt,
-        )
-
-        
-
-        return {
-            "result": response.text.strip()
-        }
+        return {"result": generate_content(prompt)}
 
     except Exception as e:
         print("\nANSWER ERROR:")

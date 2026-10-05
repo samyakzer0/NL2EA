@@ -8,7 +8,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from retrieval.vector_store import create_retriever
 
 
-load_dotenv()
+load_dotenv(".env.local", override=True)
 
 
 def create_rag_chain():
@@ -17,8 +17,7 @@ def create_rag_chain():
 
     llm = ChatGoogleGenerativeAI(
         model="gemini-3.5-flash-lite",
-        api_key=os.getenv("GEMINI_API_KEY"),
-        temperature=0.2
+        api_key=os.getenv("GEMINI_API_KEY")
     )
 
     prompt = ChatPromptTemplate.from_template("""
