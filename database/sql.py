@@ -22,6 +22,19 @@ Rules:
 - Use SELECT statements only.
 - Do not use INSERT, UPDATE, DELETE, DROP, ALTER, or CREATE.
 - Use only tables and columns present in the schema.
+- For revenue by billing period, filter using invoices.billing_month.
+- Use payments.payment_date only when asking when money was collected.
+- Use invoices.amount for invoiced revenue.
+- Use payments.amount for collected payment amounts.
+- Invoice dates and payment dates do not necessarily represent
+  the same reporting period.
+- Use only actual table names and column names from the provided schema.
+- Use the actual categorical values represented in the database.
+  Do not assume the capitalization of status or category values.
+- Do not filter out NULL prices when counting active subscriptions
+  unless the question explicitly requires a price condition.
+- When counting active paying customers by plan, use subscription
+  status and customer counts; do not assume monthly_price must be non-NULL.
 """
 
     return  generate_content(prompt)

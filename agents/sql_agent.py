@@ -1,6 +1,6 @@
 import os
-
 from dotenv import load_dotenv
+
 
 
 from database.schema import extract_database_schema, format_schema
@@ -12,13 +12,22 @@ from database.sql import (
     execute_sql
 )
 
-load_dotenv()
+load_dotenv(".env.local", override=True)
 
 def run_sql(question):
 
     schema = extract_database_schema(
-        os.getenv("DATABASE_URL"),
-        allowed_tables=["documents"]
+    os.getenv("SQL_DATABASE_URL"),
+    allowed_tables=[
+        "customers",
+        "plans",
+        "subscriptions",
+        "invoices",
+        "payments",
+        "usage",
+        "employees"
+    ],
+    schema_name="zer0labs"
     )
 
     schema_text = format_schema(schema)
@@ -30,11 +39,14 @@ def run_sql(question):
 
     query = clean_sql_string(query)
 
+    print("GENERATED SQL:")
+    print(query)
+
     if not validate_sql_query(query):
         return "Unsafe SQL query generated."
 
     rows = execute_sql(
-        os.getenv("DATABASE_URL"),
+        os.getenv("SQL_DATABASE_URL"),
         query
     )
 

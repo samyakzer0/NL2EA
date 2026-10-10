@@ -13,6 +13,7 @@ ENV/
 .pytest_cache/
 .coverage
 htmlcov/
+zer0Labs
 
 # Environment variables & Sensitive files
 .env

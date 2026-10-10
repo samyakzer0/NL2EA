@@ -12,6 +12,8 @@ load_dotenv()
 class State(TypedDict):
     message: str
     result: str
+    sql_result: str
+    rag_result: str
 
 builder = StateGraph(State)
 
@@ -22,7 +24,8 @@ def sql(state: State):
     result = run_sql(question)
 
     return {
-        "result": result
+        "result": result,
+        "sql_result": result
     }
 
 #rag node
@@ -30,60 +33,130 @@ def rag(state: State):
     question = state['message']
     result = run_rag(question)
     return {
-        "result": result
+        "result": result,
+        "rag_result": result
     }
 
 
 def classify(question):
      prompt = f"""
-     You are a routing classifier for an enterprise analytics system.
+You are a routing classifier for an enterprise analytics system.
 
-Classify the user's question into exactly ONE category:
+Classify the question into exactly ONE category:
 
-SQL:
-- Counting records
-- Filtering records
-- Aggregations such as COUNT, SUM, AVG, MIN, MAX
-- Sorting or grouping structured data
-- Questions asking for database records or values
-- Questions containing phrases like:
-  "how many", "count", "list", "show me", "which records", "how much"
+sql:
+Requires structured database records, counts, filtering,
+aggregations, sorting, or grouping.
 
-RAG:
-- Questions asking for information, explanations, or facts contained
-  in unstructured documents
-- Questions requiring semantic document retrieval
-- Questions such as:
-  "What is the refund period?"
-  "What does the refund policy say?"
-  "What is the company's shipping policy?"
+rag:
+Requires information from company documents, policies,
+contracts, explanations, or documentation.
 
-IMPORTANT:
-The word "document" alone does NOT mean RAG.
+hybrid:
+Requires BOTH structured database information AND
+information from company documents.
 
-For example:
-"How many documents mention shipping?"
-=> sql
+Examples:
+"How many active subscriptions do we have?" -> sql
+"What does our enterprise SLA promise?" -> rag
+"What was Q3 enterprise revenue, and what does our SLA promise?" -> hybrid
 
-"Show me documents that mention refunds"
-=> sql
-
-"What is the refund period?"
-=> rag
-
-"Who is the CEO of the company?"
-=> rag
+The word "document" alone does not imply rag.
 
 User question:
 {question}
 
-Return ONLY one word:
-sql
-or
-rag
+Return ONLY one word: sql, rag, or hybrid.
 """
 
-     return generate_content(prompt)
+     category = generate_content(prompt).strip().lower()
+
+     if "hybrid" in category:
+         return "hybrid"
+     if "sql" in category:
+         return "sql"
+     if "rag" in category:
+         return "rag"
+
+     return "rag"  # default to rag if classification is unclear
+
+
+def hybrid(state: State):
+    question = state["message"]
+
+    prompt = f"""
+You are a question decomposition assistant.
+
+Split the user's question into two focused questions:
+
+1. sql_question: Only the structured database information needed.
+2. rag_question: Only the information needed from company documents.
+
+Rules:
+- Preserve the user's requested dates, filters, and entities.
+- SQL questions must ask for database facts or calculations.
+- RAG questions must ask about policies, contracts, SLAs,
+  product documentation, or other company knowledge.
+- Do not answer the questions.
+- Return valid JSON with exactly these keys:
+  sql_question and rag_question.
+
+If a category is not needed, set its value to an empty string.
+
+User question:
+{question}
+"""
+
+    import json
+
+    try:
+        decomposition = generate_content(prompt)
+
+        if isinstance(decomposition, list):
+            decomposition = "".join(
+                item.get("text", "")
+                for item in decomposition
+                if isinstance(item, dict)
+            )
+
+        decomposition = str(decomposition).strip()
+        decomposition = decomposition.removeprefix("```json").removesuffix("```").strip()
+
+        questions = json.loads(decomposition)
+
+        sql_question = questions.get("sql_question", "").strip()
+        rag_question = questions.get("rag_question", "").strip()
+
+    except Exception as e:
+        print("QUESTION DECOMPOSITION ERROR:", e)
+        return {
+            "result": "I couldn't safely separate the database and document questions."
+        }
+
+    sql_result = (
+        run_sql(sql_question)
+        if sql_question
+        else "Not required for this question."
+    )
+
+    rag_result = (
+        run_rag(rag_question)
+        if rag_question
+        else "Not required for this question."
+    )
+
+    print("SQL QUESTION:", sql_question)
+    print("RAG QUESTION:", rag_question)
+
+    return {
+        "sql_result": str(sql_result),
+        "rag_result": str(rag_result),
+        "result": (
+            f"STRUCTURED DATABASE RESULT:\n{sql_result}\n\n"
+            f"DOCUMENT RETRIEVAL RESULT:\n{rag_result}"
+        )
+    }
+
 
 def answer(state: State):
 
@@ -124,14 +197,16 @@ def router(state: State):
 
 builder.add_node("rag", rag)
 builder.add_node("sql", sql)
-
+builder.add_node("hybrid", hybrid)
 builder.add_conditional_edges(START, router, {
     "rag": "rag",
-    "sql": "sql"
+    "sql": "sql",
+    "hybrid": "hybrid"
 })
 builder.add_node("answer", answer)
 builder.add_edge("rag", "answer")
 builder.add_edge("sql", "answer")
+builder.add_edge("hybrid", "answer")
 builder.add_edge("answer", END)
 
 graph = builder.compile()
